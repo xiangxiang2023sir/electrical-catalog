@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 export const useUiStore = defineStore('ui', () => {
   const viewMode = ref('grid')
+  const mainView = ref('catalog')
   const selectedId = ref(null)
   const toast = ref(null)
   const planDrawerOpen = ref(false)
@@ -19,9 +20,23 @@ export const useUiStore = defineStore('ui', () => {
     }, ms)
   }
 
+  function showCatalog() {
+    mainView.value = 'catalog'
+  }
+
+  function showAssistant() {
+    selectedId.value = null
+    formOpen.value = false
+    planDrawerOpen.value = false
+    projectDrawerOpen.value = false
+    profileDrawerOpen.value = false
+    mainView.value = 'assistant'
+  }
+
   function selectItem(id) {
     selectedId.value = id
     if (id != null) {
+      mainView.value = 'catalog'
       planDrawerOpen.value = false
       formOpen.value = false
       projectDrawerOpen.value = false
@@ -42,6 +57,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function openAddForm() {
+    mainView.value = 'catalog'
     planDrawerOpen.value = false
     projectDrawerOpen.value = false
     profileDrawerOpen.value = false
@@ -52,6 +68,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   function openEditForm(id) {
+    mainView.value = 'catalog'
     planDrawerOpen.value = false
     projectDrawerOpen.value = false
     profileDrawerOpen.value = false
@@ -92,6 +109,7 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     viewMode,
+    mainView,
     selectedId,
     toast,
     planDrawerOpen,
@@ -101,6 +119,8 @@ export const useUiStore = defineStore('ui', () => {
     projectDrawerOpen,
     profileDrawerOpen,
     showToast,
+    showCatalog,
+    showAssistant,
     selectItem,
     openPlanDrawer,
     closePlanDrawer,

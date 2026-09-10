@@ -44,6 +44,12 @@ img { display: block; }
   display: flex; align-items: center; justify-content: center;
   color: #a39d94; transition: .15s;
 }
+.rail-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
 .rail button:hover { background: #f5f3f0; color: var(--txt); }
 .rail button.active { border: 1.5px solid var(--accent); color: var(--accent); }
 .rail .spacer { flex: 1; }

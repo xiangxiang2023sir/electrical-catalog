@@ -4,7 +4,7 @@ import { exportCompanyBomXlsx } from '../export/company-bom.js'
 import { exportPlanCsv, exportPlanJson } from '../export/plan-file.js'
 import { parseBomFile } from '../import/parse-bom.js'
 import { lookupMaterialsByOrderNos } from '../api/materials.js'
-import { parsePrice } from '../domain/material.js'
+import { normalizeItem, parsePrice } from '../domain/material.js'
 import { clearSavedPlan, loadPlan, savePlan } from '../persist/plan-storage.js'
 import { useCatalogStore } from './catalog.js'
 import { useSessionStore } from './session.js'
@@ -109,12 +109,25 @@ export const usePlanStore = defineStore('plan', () => {
       useUiStore().showToast('当前页没有这条物料')
       return
     }
-    const key = String(item.id)
-    const found = entries.value.find((e) => e.id === key)
-    if (found) upsertPlanItem(item, found.qty + 1)
-    else upsertPlanItem(item, 1)
+    addItemsToPlan([item])
+  }
+
+  function addItemsToPlan(list) {
+    const rows = Array.isArray(list) ? list.filter((item) => item?.id != null) : []
+    if (!rows.length) {
+      useUiStore().showToast('没有可加入的物料')
+      return
+    }
+    for (const item of rows) {
+      const extra = Math.max(1, Math.floor(Number(item.qty) || 1))
+      const normalized = { ...normalizeItem(item), qty: extra }
+      const key = String(normalized.id)
+      const found = entries.value.find((e) => e.id === key)
+      if (found) upsertPlanItem(normalized, found.qty + extra)
+      else upsertPlanItem(normalized, extra)
+    }
     persist()
-    useUiStore().showToast('已加入方案')
+    useUiStore().showToast(rows.length === 1 ? '已加入方案' : `已加入方案 ${rows.length} 种`)
   }
 
   function togglePlan(id) {
@@ -280,6 +293,7 @@ export const usePlanStore = defineStore('plan', () => {
     remember,
     syncItem,
     addToPlan,
+    addItemsToPlan,
     togglePlan,
     setPlanQty,
     removeFromPlan,

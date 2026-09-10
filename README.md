@@ -29,6 +29,16 @@ npm run dev
 
 物料库（`library/catalog.db` 和图片）不进 GitHub。别人克隆程序后，需要再拷贝你的 `library` 文件夹才能看到完整物料。
 
+## 选型助手（可选）
+
+左侧图标栏「助手」：先写需求，再点选补问，最后按库内物料给出建议。Key 只放本机 `.env.local`，不要进 Git。
+
+1. 复制 `.env.example` 为 `.env.local`
+2. 填写 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`（DeepSeek / 通义等兼容接口改 Base URL 即可）
+3. 重新跑 `npm run dev`
+
+没配 Key 时仍可答完问题；点「根据这些选料」会提示去配。
+
 ## 反向导入 BOM
 
 在「方案」抽屉点「导入已有 BOM」，可选：

@@ -11,6 +11,7 @@ import {
   seedDemoIfEmpty,
   updateMaterial,
 } from './catalog-db.js'
+import { analyzeNeed, proposeFromAnswers, chatTurn } from './ai-chat.js'
 
 const MIME = {
   '.jpg': 'image/jpeg',
@@ -138,23 +139,64 @@ async function handleCatalog(req, res, url) {
   sendJson(res, 404, { error: '接口不存在' })
 }
 
+async function handleAi(req, res, url) {
+  const method = req.method || 'GET'
+  const path = url.pathname.replace(/\/+$/, '')
+  if (method === 'POST' && path === '/api/ai/analyze') {
+    const body = await readJsonBody(req)
+    const result = await analyzeNeed({
+      need: body.need || '',
+      planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+    })
+    sendJson(res, 200, result)
+    return
+  }
+  if (method === 'POST' && path === '/api/ai/propose') {
+    const body = await readJsonBody(req)
+    const result = await proposeFromAnswers({
+      need: body.need || '',
+      answers: body.answers || [],
+      planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+    })
+    sendJson(res, 200, result)
+    return
+  }
+  if (method === 'POST' && path === '/api/ai/chat') {
+    const body = await readJsonBody(req)
+    const result = await chatTurn({
+      history: body.history || body.messages || [],
+      need: body.need || '',
+      answers: body.answers || [],
+      planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+    })
+    sendJson(res, 200, result)
+    return
+  }
+  sendJson(res, 404, { error: '接口不存在' })
+}
+
 export function catalogMiddleware(req, res, next) {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
   if (url.pathname.startsWith('/library-media/')) {
     serveImage(req, res, url)
     return
   }
-  if (!url.pathname.startsWith('/api/catalog')) {
+  const isCatalog = url.pathname.startsWith('/api/catalog')
+  const isAi = url.pathname.startsWith('/api/ai')
+  if (!isCatalog && !isAi) {
     next()
     return
   }
 
   Promise.resolve()
     .then(() => seedDemoIfEmpty())
-    .then(() => handleCatalog(req, res, url))
+    .then(() => (isAi ? handleAi(req, res, url) : handleCatalog(req, res, url)))
     .catch((e) => {
-      const expose = e.expose || e.message === '请填写内部订货号（与公司表一致）' || e.message === '请填写名称'
-      sendJson(res, expose ? 400 : 500, { ok: false, error: expose ? e.message : '物料库出错' })
+      const expose =
+        e.expose ||
+        e.message === '请填写内部订货号（与公司表一致）' ||
+        e.message === '请填写名称'
+      sendJson(res, expose ? 400 : 500, { ok: false, error: expose ? e.message : isAi ? '助手出错' : '物料库出错' })
       if (!expose) console.error(e)
     })
 }

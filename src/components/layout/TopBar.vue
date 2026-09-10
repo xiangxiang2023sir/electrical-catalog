@@ -1,6 +1,6 @@
 <template>
   <div class="topbar">
-    <label class="search" :class="{ focus: searchFocus }">
+    <label v-if="ui.mainView === 'catalog'" class="search" :class="{ focus: searchFocus }">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
       </svg>
@@ -26,7 +26,11 @@
 
     <div class="grow"></div>
 
-    <button class="btn-outline" :class="{ warn: !session.projectReady }" @click="ui.openProjectDrawer()">
+    <button
+      class="btn-outline"
+      :class="{ warn: !session.projectReady }"
+      @click="ui.openProjectDrawer()"
+    >
       {{ session.projectLabel }}
     </button>
 
@@ -34,7 +38,9 @@
       {{ session.user.name }}
     </button>
 
-    <button class="btn-outline" @click="ui.openAddForm()">新增物料</button>
+    <template v-if="ui.mainView === 'catalog'">
+      <button class="btn-outline" @click="ui.openAddForm()">新增物料</button>
+    </template>
 
     <button class="btn-plan" @click="ui.openPlanDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -44,7 +50,7 @@
       <span class="badge" :class="{ zero: plan.planSize === 0 }">{{ plan.planSize }}</span>
     </button>
 
-    <div class="seg">
+    <div v-if="ui.mainView === 'catalog'" class="seg">
       <button :class="{ active: ui.viewMode === 'grid' }" @click="ui.viewMode = 'grid'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="8" height="8" rx="1.5"/>

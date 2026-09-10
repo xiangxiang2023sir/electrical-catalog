@@ -2,15 +2,22 @@
   <LoginScreen v-if="!session.loggedIn" />
   <div v-else class="app-wrapper">
     <RailNav />
-    <Sidebar />
+    <Sidebar v-if="ui.mainView === 'catalog'" />
     <main class="main">
       <TopBar />
       <div class="main-body">
-        <MaterialGrid />
+        <MaterialGrid v-if="ui.mainView === 'catalog'" />
+        <AiWorkspace v-else />
       </div>
-      <div class="statusbar">外挂物料库 library/catalog.db · 可导入已有 BOM 到方案，再加料导出</div>
+      <div class="statusbar">
+        {{
+          ui.mainView === 'assistant'
+            ? '助手按项目编号和工作令记住问答 · 选料只查 library/catalog.db'
+            : '外挂物料库 library/catalog.db · 可导入已有 BOM 到方案，再加料导出'
+        }}
+      </div>
     </main>
-    <DetailPanel />
+    <DetailPanel v-if="ui.mainView === 'catalog'" />
     <ToastMessage />
     <PlanDrawer />
     <MaterialForm />
@@ -30,6 +37,7 @@ import TopBar from './components/layout/TopBar.vue'
 import LoginScreen from './components/layout/LoginScreen.vue'
 import ProjectDrawer from './components/layout/ProjectDrawer.vue'
 import ProfileDrawer from './components/layout/ProfileDrawer.vue'
+import AiWorkspace from './components/ai/AiWorkspace.vue'
 import MaterialGrid from './components/catalog/MaterialGrid.vue'
 import DetailPanel from './components/catalog/DetailPanel.vue'
 import MaterialForm from './components/catalog/MaterialForm.vue'
