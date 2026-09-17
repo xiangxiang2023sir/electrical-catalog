@@ -47,15 +47,17 @@ npm run dev
 
 ## 选型助手（可选）
 
-左侧图标栏「助手」：先选品类或写需求，按库内数据补问，再选料加入方案。Key 只放本机 `.env.local`，不要进 Git。
+左侧图标栏「助手」：先选品类或写需求，按库内数据补问，再选料加入方案。
 
-1. 复制 `.env.example` 为 `.env.local`
-2. 填写 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`（DeepSeek / 通义等兼容接口改 Base URL 即可）
-3. 重新跑 `npm run dev`
+没登录大模型时仍可完成**读库补问**与**读库选料**；自由对话、大模型精推需先登录：
+
+1. 助手页右上角点 **大模型登录**
+2. 填写 API Key、Base URL、模型名（如 DeepSeek 的 `deepseek-flash`）
+3. 点 **保存并检测**，按钮变绿表示接通
+
+Key 存在浏览器 localStorage，不进 Git、也不写入物料库。`.env.local` 仅作开发备用，可选。
 
 助手页标题旁会显示当前模式：**读库补问** / **读库选料** / **大模型选料** / **大模型对话**。
-
-没配 Key 时仍可完成补问与读库选料；继续自由对话、大模型精推需要 Key。
 
 ## 反向导入 BOM
 

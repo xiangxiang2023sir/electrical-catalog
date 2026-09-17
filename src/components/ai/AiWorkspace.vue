@@ -8,8 +8,51 @@
         </div>
         <h2>{{ session.projectReady ? session.project.name : '先填项目，对话会跟项目走' }}</h2>
       </div>
-      <button class="btn-ghost" type="button" @click="ai.resetThread()">新对话</button>
+      <div class="ai-head-actions">
+        <button
+          class="btn-ghost ai-llm-btn"
+          :class="llm.buttonState"
+          type="button"
+          @click="openLlmPanel"
+        >
+          {{ llm.buttonLabel }}
+        </button>
+        <button class="btn-ghost" type="button" @click="ai.resetThread()">新对话</button>
+      </div>
     </header>
+
+    <div v-if="llm.panelOpen" class="ai-llm-backdrop" @click.self="llm.closePanel()">
+      <div class="ai-llm-panel" role="dialog" aria-labelledby="ai-llm-title">
+        <div class="ai-llm-panel-head">
+          <h3 id="ai-llm-title">大模型登录</h3>
+          <button class="btn-ghost ai-llm-close" type="button" @click="llm.closePanel()">关闭</button>
+        </div>
+        <p class="ai-llm-lead">
+          API Key 只保存在本机浏览器，换电脑需重新登录，不会使用项目里的 .env.local。
+        </p>
+        <form class="ai-llm-form" @submit.prevent="submitLlm">
+          <label class="form-field">
+            <span>API Key <i>*</i></span>
+            <input v-model="llmForm.apiKey" type="password" autocomplete="off" placeholder="sk-…">
+          </label>
+          <label class="form-field">
+            <span>接口地址</span>
+            <input v-model="llmForm.baseUrl" type="url" placeholder="https://api.deepseek.com/v1">
+          </label>
+          <label class="form-field">
+            <span>模型名称</span>
+            <input v-model="llmForm.model" type="text" placeholder="deepseek-flash">
+          </label>
+          <p v-if="llmError || llm.statusError" class="form-error">{{ llmError || llm.statusError }}</p>
+          <div class="ai-llm-actions">
+            <button v-if="llm.loggedIn" class="btn-ghost danger" type="button" @click="logoutLlm">退出登录</button>
+            <button class="btn-primary" type="submit" :disabled="llm.status === 'checking'">
+              {{ llm.status === 'checking' ? '检测中…' : '保存并检测' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div ref="threadEl" class="ai-thread">
       <div v-if="!ai.messages.length" class="ai-empty">
@@ -121,17 +164,73 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { CUSTOM_OPTION_ID, MATERIAL_CATEGORIES } from '../../ai/wizard-steps.js'
 import { useAiStore } from '../../stores/ai.js'
+import { useLlmAuthStore } from '../../stores/llm-auth.js'
 import { useSessionStore } from '../../stores/session.js'
 import { useUiStore } from '../../stores/ui.js'
 
 const ai = useAiStore()
+const llm = useLlmAuthStore()
 const session = useSessionStore()
 const ui = useUiStore()
 const draft = ref('')
 const threadEl = ref(null)
+const llmError = ref('')
+const llmForm = reactive({
+  apiKey: '',
+  baseUrl: llm.defaults.baseUrl,
+  model: llm.defaults.model,
+})
+
+function fillLlmForm() {
+  llmForm.apiKey = llm.cred?.apiKey || ''
+  llmForm.baseUrl = llm.cred?.baseUrl || llm.defaults.baseUrl
+  llmForm.model = llm.cred?.model || llm.defaults.model
+}
+
+function openLlmPanel() {
+  llmError.value = ''
+  fillLlmForm()
+  llm.openPanel()
+}
+
+async function submitLlm() {
+  const result = llm.login({
+    apiKey: llmForm.apiKey,
+    baseUrl: llmForm.baseUrl,
+    model: llmForm.model,
+  })
+  if (!result.ok) {
+    llmError.value = result.error
+    return
+  }
+  llmError.value = ''
+  const check = await llm.verify({
+    apiKey: llmForm.apiKey,
+    baseUrl: llmForm.baseUrl,
+    model: llmForm.model,
+  })
+  if (!check.ok) {
+    llmError.value = check.error || '模型未接通'
+    ui.showToast('已保存，但模型未接通，请检查模型名与 Key')
+    return
+  }
+  llm.closePanel()
+  ui.showToast('大模型已接通')
+}
+
+onMounted(() => {
+  if (llm.loggedIn) llm.verify()
+})
+
+function logoutLlm() {
+  llm.logout()
+  llmForm.apiKey = ''
+  llmError.value = ''
+  ui.showToast('已退出大模型登录')
+}
 
 const current = computed(() => {
   if (!ai.step) return { optionId: '', custom: '' }
@@ -229,6 +328,63 @@ function onAdd() {
   padding: 2px 10px;
 }
 .ai-head h2 { font-size: 18px; margin-top: 2px; font-weight: 700; }
+.ai-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ai-llm-btn.ok {
+  border-color: #b9dfc8;
+  background: #eef8f1;
+  color: #2f7a4f;
+}
+.ai-llm-btn.fail {
+  border-color: #efb8b0;
+  background: #fdf0ee;
+  color: #b54a3a;
+}
+.ai-llm-btn.checking {
+  border-color: #e6dcc4;
+  background: #fff9ee;
+  color: #9a7b3c;
+}
+.ai-llm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 28, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 16px 16px;
+  z-index: 120;
+}
+.ai-llm-panel {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+}
+.ai-llm-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ai-llm-panel-head h3 { font-size: 17px; font-weight: 700; margin: 0; }
+.ai-llm-close { padding: 6px 10px; }
+.ai-llm-lead {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--txt3);
+}
+.ai-llm-form .form-field:last-of-type { margin-bottom: 0; }
+.ai-llm-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
 .ai-thread {
   flex: 1;
   min-height: 0;

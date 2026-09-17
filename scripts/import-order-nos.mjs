@@ -3,10 +3,32 @@ import fs from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { importOrderNos, replaceMaterials, seedDemoIfEmpty } from '../server/catalog-db.js'
-import { classify, parseCsvLine } from './classify-materials.mjs'
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const defaultFullCsv = join(rootDir, 'library', '新增品牌申请_物料清单_表格.csv')
+
+function parseCsvLine(line) {
+  const out = []
+  let cur = ''
+  let q = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (q) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"'
+          i += 1
+        } else q = false
+      } else cur += c
+    } else if (c === '"') q = true
+    else if (c === ',') {
+      out.push(cur)
+      cur = ''
+    } else cur += c
+  }
+  out.push(cur)
+  return out
+}
 
 function cellText(value) {
   if (value == null) return ''
@@ -55,10 +77,6 @@ function pickSheet(wb) {
   return wb.getWorksheet('全部物料') || wb.worksheets[0]
 }
 
-function catalogCat(major, minor) {
-  return `${major} / ${minor}`
-}
-
 function readFullCsv(filePath) {
   const text = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '')
   const lines = text.split(/\r?\n/).filter((l) => l.trim())
@@ -74,21 +92,13 @@ function readFullCsv(filePath) {
     const inCatalog = (cols[9] || '').trim()
     const stop = (cols[18] || '').trim()
     const link = (cols[15] || '').trim()
-    const classified = classify({
-      orderNo,
-      title,
-      newTitle: (cols[7] || '').trim(),
-      oldModel,
-      newSpec,
-      brand,
-    })
-    const tags = [classified.major]
+    const tags = []
     if (inCatalog === '是') tags.push('采购目录')
     if (stop) tags.push('停用')
     rows.push({
       orderNo,
       title,
-      cat: catalogCat(classified.major, classified.minor),
+      cat: mapCategory((cols[13] || '').trim()) || '未分类',
       brand,
       model: newSpec || oldModel,
       desc: link,

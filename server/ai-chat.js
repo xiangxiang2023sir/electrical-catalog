@@ -4,8 +4,6 @@ import {
   catalogFacetsForQuery,
   proposeFromCatalogSearch,
 } from './catalog-facets.js'
-import { loadLocalEnv } from './load-env.js'
-
 const REQUEST_MS = 35_000
 const ANALYZE_MS = 20_000
 const MAX_TOOL_ROUNDS = 2
@@ -117,18 +115,20 @@ function extractJson(text) {
   }
 }
 
-function settings() {
-  loadLocalEnv()
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim()
-  const baseUrl = String(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '')
-  const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()
-  return { apiKey, baseUrl, model }
+function resolveConfig(llm) {
+  const apiKey = String(llm?.apiKey || '').trim()
+  if (!apiKey) return null
+  return {
+    apiKey,
+    baseUrl: String(llm?.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+    model: String(llm?.model || 'gpt-4o-mini').trim(),
+  }
 }
 
-function requireKey() {
-  const cfg = settings()
-  if (!cfg.apiKey) {
-    const err = new Error('还没配置 AI。请在项目根目录建立 .env.local，写入 OPENAI_API_KEY、OPENAI_BASE_URL、OPENAI_MODEL 后重启 npm run dev。')
+function requireKey(llm) {
+  const cfg = resolveConfig(llm)
+  if (!cfg) {
+    const err = new Error('请先在助手右上角「大模型登录」填入你自己的 API Key。')
     err.expose = true
     throw err
   }
@@ -248,7 +248,7 @@ function abortError(label) {
   return err
 }
 
-export async function analyzeNeed({ need, planOrderNos }) {
+export async function analyzeNeed({ need, planOrderNos, llm }) {
   const text = String(need || '').trim()
   if (text.length < 4) {
     const err = new Error('请先写清楚需求，至少几个字')
@@ -261,12 +261,8 @@ export async function analyzeNeed({ need, planOrderNos }) {
     return { ...catalogResult, engine: 'catalog' }
   }
 
-  let cfg
-  try {
-    cfg = requireKey()
-  } catch {
-    return { ...catalogResult, engine: 'catalog' }
-  }
+  const cfg = resolveConfig(llm)
+  if (!cfg) return { ...catalogResult, engine: 'catalog' }
 
   const facets = catalogFacetsForQuery(text)
   const already = (Array.isArray(planOrderNos) ? planOrderNos : []).map(String).filter(Boolean).slice(0, 40)
@@ -387,7 +383,7 @@ async function runJsonToolLoop({ apiKey, baseUrl, model, system, userMessages, a
   throw err
 }
 
-export async function proposeFromAnswers({ need, answers, planOrderNos, questions, answersMap }) {
+export async function proposeFromAnswers({ need, answers, planOrderNos, questions, answersMap, llm }) {
   const rows = Array.isArray(answers) ? answers : []
   const already = (Array.isArray(planOrderNos) ? planOrderNos : []).map(String).filter(Boolean).slice(0, 80)
   const catalogFallback = () => ({
@@ -395,12 +391,8 @@ export async function proposeFromAnswers({ need, answers, planOrderNos, question
     engine: 'catalog',
   })
 
-  let cfg
-  try {
-    cfg = requireKey()
-  } catch {
-    return catalogFallback()
-  }
+  const cfg = resolveConfig(llm)
+  if (!cfg) return catalogFallback()
 
   const facets = catalogFacetsForQuery(need)
   const userText = [
@@ -435,8 +427,38 @@ export async function proposeFromAnswers({ need, answers, planOrderNos, question
   }
 }
 
-export async function chatTurn({ history, need, answers, planOrderNos }) {
-  const { apiKey, baseUrl, model } = requireKey()
+export async function verifyLlm(llm) {
+  const cfg = resolveConfig(llm)
+  if (!cfg) {
+    const err = new Error('请先填写 API Key')
+    err.expose = true
+    throw err
+  }
+  const wait = withTimeout(12_000)
+  try {
+    await chatCompletions(
+      {
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        model: cfg.model,
+        messages: [{ role: 'user', content: 'ping' }],
+        maxTokens: 8,
+      },
+      wait.signal
+    )
+    return { ok: true }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      return { ok: false, error: '连接超时，请检查接口地址与网络' }
+    }
+    return { ok: false, error: e.message || '模型接口失败' }
+  } finally {
+    wait.done()
+  }
+}
+
+export async function chatTurn({ history, need, answers, planOrderNos, llm }) {
+  const { apiKey, baseUrl, model } = requireKey(llm)
   const already = (Array.isArray(planOrderNos) ? planOrderNos : []).map(String).filter(Boolean).slice(0, 80)
   const rows = Array.isArray(answers) ? answers : []
   const prior = (Array.isArray(history) ? history : [])

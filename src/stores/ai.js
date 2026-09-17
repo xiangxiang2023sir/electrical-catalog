@@ -13,6 +13,7 @@ import {
   wizardComplete,
 } from '../ai/wizard-steps.js'
 import { getThread, loadAiStore, projectThreadKey, saveAiStore } from '../persist/ai-storage.js'
+import { useLlmAuthStore } from './llm-auth.js'
 import { usePlanStore } from './plan.js'
 import { useSessionStore } from './session.js'
 import { useUiStore } from './ui.js'
@@ -67,12 +68,21 @@ export const useAiStore = defineStore('ai', () => {
   })
 
   function setEngineFromResponse(data, phase) {
+    const llmAuth = useLlmAuthStore()
     if (data?.engine === 'llm') {
       engineMode.value = phase === 'chat' ? 'llm-chat' : 'llm-propose'
+      llmAuth.markOk()
       return
     }
     if (data?.engine === 'catalog') {
       engineMode.value = phase === 'analyze' ? 'catalog-wizard' : 'catalog-propose'
+    }
+  }
+
+  function noteLlmFailure(e) {
+    const msg = String(e?.message || '')
+    if (msg.includes('模型接口失败') || msg.includes('模型未接通') || msg.includes('API Key')) {
+      useLlmAuthStore().markFail(msg.replace(/^模型接口失败：?/, '模型接口失败：'))
     }
   }
 
@@ -297,6 +307,7 @@ export const useAiStore = defineStore('ai', () => {
       if (!messages.value.length) pushMessage({ role: 'user', text })
       await analyzeFromNeed(text)
     } catch (e) {
+      noteLlmFailure(e)
       error.value = e?.message || '分析失败'
     } finally {
       analyzing.value = false
@@ -330,6 +341,7 @@ export const useAiStore = defineStore('ai', () => {
     try {
       await proposeFromNeed(text)
     } catch (e) {
+      noteLlmFailure(e)
       error.value = e?.message || '选料失败'
     } finally {
       proposing.value = false
@@ -367,10 +379,17 @@ export const useAiStore = defineStore('ai', () => {
       try {
         await proposeFromNeed(content)
       } catch (e) {
+        noteLlmFailure(e)
         error.value = e?.message || '选料失败'
       } finally {
         proposing.value = false
       }
+      return
+    }
+
+    if (!useLlmAuthStore().loggedIn) {
+      error.value = '多轮对话需要大模型。请点右上角「大模型登录」填入 API Key。'
+      useLlmAuthStore().openPanel()
       return
     }
 
@@ -388,6 +407,7 @@ export const useAiStore = defineStore('ai', () => {
       applyItems(data, data.reply)
       if (!items.value.length && !data.reply) useUiStore().showToast('没有新的建议')
     } catch (e) {
+      noteLlmFailure(e)
       error.value = e?.message || '对话失败'
     } finally {
       chatting.value = false
@@ -415,6 +435,7 @@ export const useAiStore = defineStore('ai', () => {
       applyItems(data, data.summary)
       if (!items.value.length) useUiStore().showToast(summary.value || '库中未找到合适物料')
     } catch (e) {
+      noteLlmFailure(e)
       error.value = e?.message || '选料失败'
     } finally {
       proposing.value = false

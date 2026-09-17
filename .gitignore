@@ -11,8 +11,11 @@ library/images/*
 !library/images/.gitkeep
 library/.image-fetch-miss.txt
 library/*.csv
+library/*.md
+library/*.txt
 library/*.xlsx
 library/*.xls
 library/*.xlsm
+library/整理任务/
 
 

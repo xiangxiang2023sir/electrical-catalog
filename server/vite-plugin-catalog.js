@@ -11,7 +11,7 @@ import {
   seedDemoIfEmpty,
   updateMaterial,
 } from './catalog-db.js'
-import { analyzeNeed, proposeFromAnswers, chatTurn } from './ai-chat.js'
+import { analyzeNeed, chatTurn, proposeFromAnswers, verifyLlm } from './ai-chat.js'
 
 const MIME = {
   '.jpg': 'image/jpeg',
@@ -19,6 +19,7 @@ const MIME = {
   '.png': 'image/png',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
 }
 
 function sendJson(res, status, body) {
@@ -147,6 +148,7 @@ async function handleAi(req, res, url) {
     const result = await analyzeNeed({
       need: body.need || '',
       planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+      llm: body.llm,
     })
     sendJson(res, 200, result)
     return
@@ -159,8 +161,15 @@ async function handleAi(req, res, url) {
       planOrderNos: body.planOrderNos || body.plan_order_nos || [],
       questions: body.questions || [],
       answersMap: body.answersMap || body.answers_map || {},
+      llm: body.llm,
     })
     sendJson(res, 200, result)
+    return
+  }
+  if (method === 'POST' && path === '/api/ai/verify') {
+    const body = await readJsonBody(req)
+    const result = await verifyLlm(body.llm)
+    sendJson(res, result.ok ? 200 : 400, result)
     return
   }
   if (method === 'POST' && path === '/api/ai/chat') {
@@ -170,6 +179,7 @@ async function handleAi(req, res, url) {
       need: body.need || '',
       answers: body.answers || [],
       planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+      llm: body.llm,
     })
     sendJson(res, 200, result)
     return
