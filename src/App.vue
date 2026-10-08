@@ -17,7 +17,7 @@
         }}
       </div>
     </main>
-    <DetailPanel v-if="ui.mainView === 'catalog'" />
+    <DetailPanel v-if="ui.mainView === 'catalog' || ui.selectedId != null" />
     <ToastMessage />
     <PlanDrawer />
     <MaterialForm />

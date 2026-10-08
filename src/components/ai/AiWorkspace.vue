@@ -81,18 +81,34 @@
         <div class="ai-meta">{{ msg.role === 'user' ? '你' : '助手' }}</div>
         <p class="ai-text">{{ msg.text }}</p>
         <div v-if="msg.items?.length" class="ai-rec">
-          <label v-for="item in msg.items" :key="item.orderNo" class="ai-item">
-            <input
-              type="checkbox"
-              :checked="ai.selected.includes(item.orderNo)"
-              @change="ai.toggleSelected(item.orderNo)"
-            >
-            <div>
+          <div v-for="item in msg.items" :key="item.orderNo" class="ai-item">
+            <label class="ai-item-check" @click.stop>
+              <input
+                type="checkbox"
+                :checked="ai.selected.includes(item.orderNo)"
+                @change="ai.toggleSelected(item.orderNo)"
+              >
+            </label>
+            <button type="button" class="ai-item-main" @click="onOpenDetail(item)">
               <div class="pi-title">{{ item.title }}</div>
               <div class="pi-sku">{{ item.orderNo }} · 建议 {{ item.qty }} {{ item.unit || 'EA' }}</div>
               <div class="ai-reason">{{ item.reason }}</div>
-            </div>
-          </label>
+              <span class="ai-item-hint">点击查看详情</span>
+            </button>
+          </div>
+          <button
+            v-if="msg.proposeMeta?.hasMore"
+            class="btn-ghost ai-more"
+            type="button"
+            :disabled="ai.busy"
+            @click="ai.loadMoreItems(msg.id)"
+          >
+            {{
+              ai.loadingMore
+                ? '加载中…'
+                : `显示更多（已 ${msg.items.length}${msg.proposeMeta.total ? ` / 库内约 ${msg.proposeMeta.total} 条` : ''}）`
+            }}
+          </button>
           <button class="btn-primary" type="button" @click="onAdd">加入方案</button>
         </div>
       </div>
@@ -169,13 +185,19 @@ import { CUSTOM_OPTION_ID, MATERIAL_CATEGORIES } from '../../ai/wizard-steps.js'
 import { useAiStore } from '../../stores/ai.js'
 import { useLlmAuthStore } from '../../stores/llm-auth.js'
 import { useSessionStore } from '../../stores/session.js'
+import { useCatalogStore } from '../../stores/catalog.js'
 import { useUiStore } from '../../stores/ui.js'
 
 const ai = useAiStore()
 const llm = useLlmAuthStore()
 const session = useSessionStore()
+const catalog = useCatalogStore()
 const ui = useUiStore()
 const draft = ref('')
+
+async function onOpenDetail(item) {
+  await catalog.openDetailFromRef(item)
+}
 const threadEl = ref(null)
 const llmError = ref('')
 const llmForm = reactive({
@@ -479,8 +501,46 @@ function onAdd() {
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
-.ai-item input { margin-top: 4px; }
+.ai-item-check {
+  flex-shrink: 0;
+  cursor: pointer;
+  padding-top: 4px;
+}
+.ai-item-main {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.ai-item-main:hover .pi-title {
+  color: var(--accent, #2563eb);
+  text-decoration: underline;
+}
+.ai-item-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--txt3);
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.ai-item-main:hover .ai-item-hint {
+  opacity: 1;
+}
 .ai-reason { font-size: 12px; color: var(--txt3); margin-top: 3px; }
+.ai-more {
+  width: 100%;
+  margin-top: 6px;
+  justify-content: center;
+}
+
 .ai-rec { margin-top: 10px; }
 .ai-rec .btn-primary { margin-top: 10px; }
 .ai-composer {

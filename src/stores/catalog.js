@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { parseTags } from '../domain/material.js'
+import { normalizeItem, parseTags } from '../domain/material.js'
 import {
   createMaterial,
   deleteMaterial,
   fetchCategories,
   fetchMaterial,
   fetchMaterialsPage,
+  lookupMaterialsByOrderNos,
   updateMaterial,
 } from '../api/materials.js'
 import { useUiStore } from './ui.js'
@@ -144,6 +145,50 @@ export const useCatalogStore = defineStore('catalog', () => {
     }
   }
 
+  /** 助手推荐等场景：按 id 或订货号打开详情（不切换主视图） */
+  async function openDetailFromRef(ref) {
+    const ui = useUiStore()
+    const orderNo = String(ref?.orderNo || '').trim()
+    const idRaw = ref?.id
+    const idStr = idRaw != null && idRaw !== '' ? String(idRaw) : ''
+    const isCatalogId = idStr && !idStr.startsWith('bom:')
+    if (isCatalogId) {
+      ui.openItemDetail(idRaw)
+      const item = await ensureItem(idRaw)
+      if (item) return item
+      ui.closeItemDetail()
+    }
+    if (!orderNo) {
+      ui.closeItemDetail()
+      ui.showToast('无法打开该物料详情')
+      return null
+    }
+    try {
+      const found = await lookupMaterialsByOrderNos([orderNo])
+      const item = found[0]
+      if (!item?.id) {
+        const ghostId = idStr.startsWith('bom:') ? idStr : orderNo ? `bom:${orderNo}` : ''
+        if (ghostId && (ref?.fromBom || ref?.title)) {
+          const ghost = normalizeItem({ ...ref, id: ghostId })
+          selectedCache.value = ghost
+          ui.openItemDetail(ghostId)
+          return ghost
+        }
+        ui.closeItemDetail()
+        ui.showToast('库中找不到该物料')
+        return null
+      }
+      selectedCache.value = item
+      ui.openItemDetail(item.id)
+      await ensureItem(item.id)
+      return item
+    } catch {
+      ui.closeItemDetail()
+      ui.showToast('打不开物料详情')
+      return null
+    }
+  }
+
   async function saveMaterial(payload) {
     const ui = useUiStore()
     const orderNo = String(payload.orderNo || '').trim()
@@ -216,6 +261,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     resultCountText,
     findItem,
     ensureItem,
+    openDetailFromRef,
     filterByCategory,
     search,
     loadFromApi,

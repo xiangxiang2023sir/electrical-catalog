@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { analyzeNeed, chatWithAssistant, proposeMaterials } from '../api/ai.js'
+import { analyzeNeed, chatWithAssistant, proposeMaterials, proposeMoreMaterials } from '../api/ai.js'
 import { fetchMaterialsPage } from '../api/materials.js'
 import {
   answersToPromptRows,
@@ -16,6 +16,7 @@ import { getThread, loadAiStore, projectThreadKey, saveAiStore } from '../persis
 import { useLlmAuthStore } from './llm-auth.js'
 import { usePlanStore } from './plan.js'
 import { useSessionStore } from './session.js'
+import { normalizeItem } from '../domain/material.js'
 import { useUiStore } from './ui.js'
 
 function msgId() {
@@ -36,6 +37,7 @@ export const useAiStore = defineStore('ai', () => {
   const messages = ref([])
   const analyzing = ref(false)
   const proposing = ref(false)
+  const loadingMore = ref(false)
   const chatting = ref(false)
   const matchCount = ref(null)
   const matchLoading = ref(false)
@@ -44,7 +46,7 @@ export const useAiStore = defineStore('ai', () => {
   let hydrated = false
   let matchTimer = null
 
-  const busy = computed(() => analyzing.value || proposing.value || chatting.value)
+  const busy = computed(() => analyzing.value || proposing.value || chatting.value || loadingMore.value)
   const step = computed(() => questions.value[stepIndex.value] || null)
   const isComplete = computed(() => wizardComplete(questions.value, answers.value))
   const lastStep = computed(
@@ -244,9 +246,29 @@ export const useAiStore = defineStore('ai', () => {
       .filter(Boolean)
   }
 
+  function proposeMetaFromData(data) {
+    return {
+      total: Number(data.total) || 0,
+      hasMore: Boolean(data.hasMore),
+      page: Number(data.page) || 1,
+      pageSize: Number(data.pageSize) || 20,
+    }
+  }
+
+  function normalizeRecItems(raw) {
+    return (raw || []).map((m) => ({ ...normalizeItem(m), qty: m.qty, reason: m.reason }))
+  }
+
   function applyItems(data, replyText) {
-    const nextItems = data.items || []
+    const nextItems = normalizeRecItems(data.items)
     summary.value = data.summary || data.reply || replyText || ''
+    const proposeMeta = proposeMetaFromData(data)
+    const proposeContext = {
+      need: need.value,
+      answers: answersToPromptRows(questions.value, answers.value),
+      questions: questions.value.map((q) => ({ ...q })),
+      answersMap: { ...answers.value },
+    }
     if (nextItems.length) {
       items.value = nextItems
       selected.value = nextItems.length === 1 ? nextItems.map((i) => i.orderNo) : []
@@ -259,8 +281,56 @@ export const useAiStore = defineStore('ai', () => {
       role: 'assistant',
       text: summary.value,
       items: nextItems,
+      proposeMeta,
+      proposeContext,
     })
     persist()
+  }
+
+  async function loadMoreItems(messageId) {
+    const msg = messages.value.find((m) => m.id === messageId)
+    if (!msg?.proposeMeta?.hasMore || loadingMore.value) return
+    loadingMore.value = true
+    error.value = ''
+    try {
+      const shownOrderNos = (msg.items || []).map((i) => i.orderNo)
+      const nextPage = (msg.proposeMeta.page || 1) + 1
+      const ctx = msg.proposeContext || {
+        need: need.value,
+        answers: [],
+        questions: [],
+        answersMap: {},
+      }
+      const data = await proposeMoreMaterials({
+        need: ctx.need || need.value,
+        answers: ctx.answers || [],
+        planOrderNos: planNos(),
+        questions: ctx.questions || [],
+        answersMap: ctx.answersMap || {},
+        page: nextPage,
+        shownOrderNos,
+      })
+      const more = normalizeRecItems(data.items)
+      if (!more.length) {
+        msg.proposeMeta.hasMore = false
+        useUiStore().showToast('没有更多匹配物料')
+        persist()
+        return
+      }
+      msg.items = [...(msg.items || []), ...more]
+      msg.proposeMeta = {
+        ...msg.proposeMeta,
+        page: nextPage,
+        hasMore: Boolean(data.hasMore),
+        total: Number(data.total) || msg.proposeMeta.total,
+      }
+      items.value = msg.items
+      persist()
+    } catch (e) {
+      error.value = e?.message || '加载更多失败'
+    } finally {
+      loadingMore.value = false
+    }
   }
 
   async function analyzeFromNeed(text) {
@@ -478,6 +548,7 @@ export const useAiStore = defineStore('ai', () => {
     messages,
     analyzing,
     proposing,
+    loadingMore,
     chatting,
     matchCount,
     matchLoading,
@@ -496,6 +567,7 @@ export const useAiStore = defineStore('ai', () => {
     analyze,
     send,
     propose,
+    loadMoreItems,
     addSelectedToPlan,
     syncProject,
   }

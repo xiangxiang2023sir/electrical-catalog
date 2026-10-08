@@ -10,13 +10,54 @@ const MAX_PAGES = 2
 const MAX_CHARS_PER_PAGE = 2800
 const MAX_TOTAL_CHARS = 5000
 
+/** 中文整句无空格时也要能抽出「压机」「CPU」等，避免误选 Wiki 列表第一个项目 */
+const WIKI_HINT_TERMS = [
+  '标准2050',
+  '单工位压机',
+  '小压机',
+  '包覆',
+  '四转台',
+  '锡焊',
+  '超声波',
+  '焊接机',
+  '焊机',
+  'welding',
+  'lamination',
+  '压机',
+  '控制器',
+  '触摸屏',
+  'cpu',
+  'plc',
+  '260244',
+  '260045',
+  '260138',
+  '260135',
+  '260079',
+  '260239',
+  '230088',
+]
+
 function tokenize(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/选型[：:]/g, ' ')
-    .split(/[\s,，、/\\|]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2)
+  const raw = String(text || '').toLowerCase().replace(/选型[：:]/g, ' ')
+  const tokens = new Set()
+  for (const part of raw.split(/[\s,，、/\\|]+/)) {
+    const t = part.trim()
+    if (t.length >= 2) tokens.add(t)
+  }
+  for (const term of WIKI_HINT_TERMS) {
+    if (raw.includes(term.toLowerCase())) tokens.add(term.toLowerCase())
+  }
+  return [...tokens]
+}
+
+function titlePenalty(pageTitle, tokens) {
+  const title = String(pageTitle || '').toLowerCase()
+  const wantPress = [...tokens].some((t) => /压机|2050|260244|260045|260138|包覆|小压/.test(t))
+  const wantWeld = [...tokens].some((t) => /焊|welding|超声波|锡焊|230088/.test(t))
+  let delta = 0
+  if (wantPress && !wantWeld && /焊|welding|超声波/.test(title)) delta -= 40
+  if (wantWeld && !wantPress && /压机|2050单工位/.test(title) && !/焊/.test(title)) delta -= 20
+  return delta
 }
 
 function listMarkdownPages() {
@@ -42,6 +83,7 @@ function scorePage(page, tokens, rawNeed) {
   }
   if (need.length >= 4 && page.title.toLowerCase().includes(need.slice(0, 20))) score += 5
   if (/类似|参考|对标|模板|项目/.test(need)) score += 1
+  score += titlePenalty(page.title, tokens)
   return score
 }
 
@@ -55,7 +97,8 @@ export function searchWikiPages(need, { maxPages = MAX_PAGES } = {}) {
     .filter((p) => p.score > 0)
     .sort((a, b) => b.score - a.score)
 
-  const picked = ranked.length ? ranked.slice(0, maxPages) : pages.slice(0, 1)
+  // 无有效匹配时不要默认第一个 Wiki 页（曾导致「找压机」对标到焊机）
+  const picked = ranked.length ? ranked.slice(0, maxPages) : []
   return picked.map(({ title, body, name, score }) => ({
     title,
     file: name,

@@ -1,6 +1,15 @@
 <template>
   <div v-if="ui.planDrawerOpen" class="overlay show" @click.self="ui.closePlanDrawer()"></div>
-  <div v-if="ui.planDrawerOpen" class="drawer show">
+  <div
+    v-if="ui.planDrawerOpen"
+    class="drawer show drawer-plan"
+    :style="{ width: `${drawerWidth}px` }"
+  >
+    <div
+      class="drawer-resize-handle"
+      title="拖动左边缘调整宽度"
+      @mousedown.prevent="startResize"
+    ></div>
     <div class="drawer-head">
       <h3>我的方案</h3>
       <button class="drawer-close" @click="ui.closePlanDrawer()">×</button>
@@ -46,17 +55,22 @@
       </div>
       <div v-else>
         <div v-for="item in plan.planItems" :key="item.id" class="plan-item">
-          <div class="pi-thumb">
-            <img v-if="item.img" :src="item.img" alt="">
-          </div>
-          <div class="pi-body">
-            <div class="pi-cat">
-              {{ displayCat(item.cat) }}
-              <span v-if="item.fromBom" class="pi-ext">库外</span>
+          <button type="button" class="plan-item-open" @click="onOpenDetail(item)">
+            <div class="pi-thumb">
+              <img v-if="item.img" :src="item.img" alt="">
             </div>
-            <div class="pi-title">{{ item.title }}</div>
-            <div class="pi-sku">{{ item.orderNo }} · {{ item.model || '型号待补' }}</div>
-            <div class="qty">
+            <div class="pi-body">
+              <div class="pi-cat">
+                {{ displayCat(item.cat) }}
+                <span v-if="item.fromBom" class="pi-ext">库外</span>
+              </div>
+              <div class="pi-title">{{ item.title }}</div>
+              <div class="pi-sku">{{ item.orderNo }} · {{ item.model || '型号待补' }}</div>
+              <span class="plan-item-hint">点击查看详情</span>
+            </div>
+          </button>
+          <div class="plan-item-actions">
+            <div class="qty" @click.stop>
               <button type="button" @click="plan.setPlanQty(item.id, item.qty - 1)">−</button>
               <input
                 :value="item.qty"
@@ -67,8 +81,8 @@
               <button type="button" @click="plan.setPlanQty(item.id, item.qty + 1)">+</button>
               <span class="qty-unit">{{ item.unit }}</span>
             </div>
+            <button class="pi-remove" type="button" title="移除" @click="plan.togglePlan(item.id)">×</button>
           </div>
-          <button class="pi-remove" title="移除" @click="plan.togglePlan(item.id)">×</button>
         </div>
       </div>
     </div>
@@ -89,14 +103,65 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useCatalogStore } from '../../stores/catalog.js'
 import { usePlanStore } from '../../stores/plan.js'
 import { useSessionStore } from '../../stores/session.js'
 import { useUiStore } from '../../stores/ui.js'
 import { displayCat } from '../../domain/material.js'
 
+const PLAN_DRAWER_WIDTH_KEY = 'electrical-catalog-plan-drawer-width'
+const PLAN_DRAWER_MIN = 360
+const PLAN_DRAWER_MAX = 960
+const PLAN_DRAWER_DEFAULT = 400
+
+function clampPlanDrawerWidth(n) {
+  const max = Math.min(PLAN_DRAWER_MAX, Math.floor(window.innerWidth * 0.92))
+  return Math.min(max, Math.max(PLAN_DRAWER_MIN, Math.floor(Number(n) || PLAN_DRAWER_DEFAULT)))
+}
+
+function loadPlanDrawerWidth() {
+  try {
+    const raw = localStorage.getItem(PLAN_DRAWER_WIDTH_KEY)
+    if (raw != null) return clampPlanDrawerWidth(raw)
+  } catch {
+    /* ignore */
+  }
+  return PLAN_DRAWER_DEFAULT
+}
+
+const drawerWidth = ref(loadPlanDrawerWidth())
+
+function startResize(e) {
+  const startX = e.clientX
+  const startW = drawerWidth.value
+  const onMove = (ev) => {
+    drawerWidth.value = clampPlanDrawerWidth(startW + (startX - ev.clientX))
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    try {
+      localStorage.setItem(PLAN_DRAWER_WIDTH_KEY, String(drawerWidth.value))
+    } catch {
+      /* ignore */
+    }
+  }
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+const catalog = useCatalogStore()
 const plan = usePlanStore()
 const session = useSessionStore()
 const ui = useUiStore()
+
+async function onOpenDetail(item) {
+  await catalog.openDetailFromRef(item)
+}
 const exporting = ref(false)
 const fileInput = ref(null)
 

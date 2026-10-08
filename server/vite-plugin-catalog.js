@@ -11,7 +11,7 @@ import {
   seedDemoIfEmpty,
   updateMaterial,
 } from './catalog-db.js'
-import { analyzeNeed, chatTurn, proposeFromAnswers, verifyLlm } from './ai-chat.js'
+import { analyzeNeed, chatTurn, proposeFromAnswers, proposeMoreFromAnswers, verifyLlm } from './ai-chat.js'
 
 const MIME = {
   '.jpg': 'image/jpeg',
@@ -162,6 +162,20 @@ async function handleAi(req, res, url) {
       questions: body.questions || [],
       answersMap: body.answersMap || body.answers_map || {},
       llm: body.llm,
+    })
+    sendJson(res, 200, result)
+    return
+  }
+  if (method === 'POST' && path === '/api/ai/propose-more') {
+    const body = await readJsonBody(req)
+    const result = proposeMoreFromAnswers({
+      need: body.need || '',
+      answers: body.answers || [],
+      planOrderNos: body.planOrderNos || body.plan_order_nos || [],
+      questions: body.questions || [],
+      answersMap: body.answersMap || body.answers_map || {},
+      page: body.page || 2,
+      shownOrderNos: body.shownOrderNos || body.shown_order_nos || [],
     })
     sendJson(res, 200, result)
     return

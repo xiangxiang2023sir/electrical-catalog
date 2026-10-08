@@ -44,6 +44,19 @@ export const useUiStore = defineStore('ui', () => {
     }
   }
 
+  /** 打开详情抽屉：不切换主视图，也不关闭「我的方案」 */
+  function openItemDetail(id) {
+    selectedId.value = id
+    if (id == null) return
+    formOpen.value = false
+    projectDrawerOpen.value = false
+    profileDrawerOpen.value = false
+  }
+
+  function closeItemDetail() {
+    selectedId.value = null
+  }
+
   function openPlanDrawer() {
     selectedId.value = null
     formOpen.value = false
@@ -122,6 +135,8 @@ export const useUiStore = defineStore('ui', () => {
     showCatalog,
     showAssistant,
     selectItem,
+    openItemDetail,
+    closeItemDetail,
     openPlanDrawer,
     closePlanDrawer,
     openAddForm,

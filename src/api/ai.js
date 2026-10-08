@@ -43,6 +43,26 @@ export async function proposeMaterials({ need, answers, planOrderNos, questions,
   )
 }
 
+export async function proposeMoreMaterials({
+  need,
+  answers,
+  planOrderNos,
+  questions,
+  answersMap,
+  page,
+  shownOrderNos,
+}) {
+  return asJson(
+    await fetch('/api/ai/propose-more', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        withLlm({ need, answers, planOrderNos, questions, answersMap, page, shownOrderNos })
+      ),
+    })
+  )
+}
+
 export async function verifyLlmConnection(llm) {
   return asJson(
     await fetch('/api/ai/verify', {

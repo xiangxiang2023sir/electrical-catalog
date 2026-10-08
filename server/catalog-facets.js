@@ -223,7 +223,7 @@ function answersToFilter(need, answers) {
   return buildFilterQuery(need, steps, ans)
 }
 
-export function proposeFromCatalogSearch({ need, answers, planOrderNos, questions, answersMap }) {
+export function buildProposeQuery({ need, answers, questions, answersMap }) {
   let q = ''
   if (questions?.length && answersMap) {
     q = buildFilterQuery(need, questions, answersMap)
@@ -231,12 +231,53 @@ export function proposeFromCatalogSearch({ need, answers, planOrderNos, question
     q = answersToFilter(need, answers)
   }
   if (!q) q = needKeyword(need) || String(need || '').trim()
+  return String(q || '').trim()
+}
 
-  const data = listMaterials({ q, page: 1, pageSize: MAX_ITEMS + 4 })
-  const skip = new Set((Array.isArray(planOrderNos) ? planOrderNos : []).map((n) => String(n).toLowerCase()))
+export function proposeCatalogMeta(ctx, { shownCount = 0 } = {}) {
+  const q = buildProposeQuery(ctx)
+  if (!q) return { total: shownCount, hasMore: false, page: 1, pageSize: MAX_ITEMS }
+  const total = listMaterials({ q, page: 1, pageSize: 1 }).total
+  return {
+    total,
+    hasMore: total > shownCount,
+    page: 1,
+    pageSize: MAX_ITEMS,
+  }
+}
+
+export function proposeFromCatalogSearch({
+  need,
+  answers,
+  planOrderNos,
+  questions,
+  answersMap,
+  page = 1,
+  pageSize = MAX_ITEMS,
+  extraSkip = [],
+} = {}) {
+  const q = buildProposeQuery({ need, answers, questions, answersMap })
+  if (!q) {
+    return {
+      summary: '库中未找到合适物料',
+      items: [],
+      reply: '库中未找到合适物料',
+      total: 0,
+      hasMore: false,
+      page,
+      pageSize,
+    }
+  }
+
+  const data = listMaterials({ q, page, pageSize })
+  const skip = new Set(
+    [...(Array.isArray(planOrderNos) ? planOrderNos : []), ...(Array.isArray(extraSkip) ? extraSkip : [])].map(
+      (n) => String(n).toLowerCase()
+    )
+  )
   const items = []
   for (const row of data.items) {
-    if (items.length >= MAX_ITEMS) break
+    if (items.length >= pageSize) break
     const key = String(row.orderNo).toLowerCase()
     if (skip.has(key)) continue
     items.push({
@@ -246,12 +287,14 @@ export function proposeFromCatalogSearch({ need, answers, planOrderNos, question
     })
   }
 
+  const total = data.total
+  const hasMore = page * pageSize < total
   const summary =
     items.length > 0
-      ? `从库内 ${data.total} 条中推荐 ${items.length} 条`
-      : data.total > 0
-        ? `库内有 ${data.total} 条相关物料，但没有符合全部条件的；可改选「不限」再试`
+      ? `从库内 ${total} 条中推荐 ${items.length} 条${hasMore ? '（可加载更多）' : ''}`
+      : total > 0
+        ? `库内有 ${total} 条相关物料，但没有符合全部条件的；可改选「不限」再试`
         : '库中未找到合适物料'
 
-  return { summary, items, reply: summary }
+  return { summary, items, reply: summary, total, hasMore, page, pageSize }
 }

@@ -2,6 +2,7 @@ import { listMaterials, lookupMaterials } from './catalog-db.js'
 import {
   analyzeNeedFromCatalog,
   catalogFacetsForQuery,
+  proposeCatalogMeta,
   proposeFromCatalogSearch,
 } from './catalog-facets.js'
 import { formatWikiContextForPrompt } from './selection-wiki.js'
@@ -398,11 +399,30 @@ async function runJsonToolLoop({ apiKey, baseUrl, model, system, userMessages, a
   throw err
 }
 
+function proposeCtx(need, answers, planOrderNos, questions, answersMap) {
+  return { need, answers, planOrderNos, questions, answersMap }
+}
+
+function withProposePagination(result, ctx) {
+  const meta = proposeCatalogMeta(ctx, { shownCount: result.items?.length || 0 })
+  return {
+    ...result,
+    total: result.total ?? meta.total,
+    hasMore: result.hasMore ?? meta.hasMore,
+    page: result.page ?? meta.page,
+    pageSize: result.pageSize ?? meta.pageSize,
+  }
+}
+
 export async function proposeFromAnswers({ need, answers, planOrderNos, questions, answersMap, llm }) {
   const rows = Array.isArray(answers) ? answers : []
   const already = (Array.isArray(planOrderNos) ? planOrderNos : []).map(String).filter(Boolean).slice(0, 80)
+  const ctx = proposeCtx(need, answers, planOrderNos, questions, answersMap)
   const catalogFallback = () => ({
-    ...proposeFromCatalogSearch({ need, answers, planOrderNos, questions, answersMap }),
+    ...withProposePagination(
+      proposeFromCatalogSearch({ need, answers, planOrderNos, questions, answersMap }),
+      ctx
+    ),
     engine: 'catalog',
   })
 
@@ -434,7 +454,9 @@ export async function proposeFromAnswers({ need, answers, planOrderNos, question
       already,
       wait,
     })
-    if (result.items?.length) return { ...result, engine: 'llm' }
+    if (result.items?.length) {
+      return { ...withProposePagination(result, ctx), engine: 'llm' }
+    }
     return catalogFallback()
   } catch (e) {
     if (e.name === 'AbortError') throw abortError('选料')
@@ -442,6 +464,27 @@ export async function proposeFromAnswers({ need, answers, planOrderNos, question
   } finally {
     wait.done()
   }
+}
+
+export function proposeMoreFromAnswers({
+  need,
+  answers,
+  planOrderNos,
+  questions,
+  answersMap,
+  page = 2,
+  shownOrderNos = [],
+}) {
+  const result = proposeFromCatalogSearch({
+    need,
+    answers,
+    planOrderNos,
+    questions,
+    answersMap,
+    page,
+    extraSkip: shownOrderNos,
+  })
+  return { ...result, engine: 'catalog' }
 }
 
 export async function verifyLlm(llm) {
