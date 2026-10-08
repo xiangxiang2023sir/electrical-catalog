@@ -36,7 +36,7 @@ npm run generate-bom-template
 ## 启动
 
 ```bash
-cd D:\electrical-catalog
+cd electrical-catalog-github
 npm install
 npm run dev
 ```
@@ -44,6 +44,16 @@ npm run dev
 浏览器打开 http://127.0.0.1:5173/（本机专用，默认不监听局域网）。
 
 物料库（`library/catalog.db` 和图片）不进 GitHub。别人克隆程序后，需要再拷贝你的 `library` 文件夹才能看到完整物料。
+
+## 成熟 BOM / Wiki（选型助手）
+
+标准项目 BOM 放在 `wiki/raw/bom/`，可选在 `wiki/raw/projects/` 放同名 `.meta.md` 补充工况说明。执行：
+
+```bash
+npm run sync-bom-wiki
+```
+
+会生成 `wiki/wiki/*.md`；助手在补问、选料、对话时会 **先读匹配的 Wiki 页，再查 catalog 库**。详见 `wiki/README.md` 与 **`docs/AI助手与Wiki使用说明.md`**（换机、同事协作、提问示例）。
 
 ## 选型助手（可选）
 

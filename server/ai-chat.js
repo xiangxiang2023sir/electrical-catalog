@@ -4,6 +4,10 @@ import {
   catalogFacetsForQuery,
   proposeFromCatalogSearch,
 } from './catalog-facets.js'
+import { formatWikiContextForPrompt } from './selection-wiki.js'
+
+const WIKI_FLOW_RULE =
+  '若提供了 Wiki 成熟项目参考：先理解对标项目结构与候选订货号/关键词，再用工具在 catalog 库搜索核对；最终 orderNo 只能来自工具，Wiki 有而工具未返回的号不得推荐。'
 const REQUEST_MS = 35_000
 const ANALYZE_MS = 20_000
 const MAX_TOOL_ROUNDS = 2
@@ -54,11 +58,13 @@ const ANALYZE_SYSTEM = `你是电气选型顾问。根据用户需求，找出�
 - 断路器：优先问极数、额定电流、品牌。
 - 开关电源：优先问输出电压、功率、品牌。
 - 急停/安全：优先问类型、安全等级、品牌。
-- 若是整机/项目描述（如 AGV、产线、电柜），才问设备类型、主电压、品牌偏好、安全需求等。`
+- 若是整机/项目描述（如 AGV、产线、电柜），才问设备类型、主电压、品牌偏好、安全需求等。
+${WIKI_FLOW_RULE}`
 
 const PROPOSE_SYSTEM = `你是电气物料选型助手。只能用工具查本公司库。
+${WIKI_FLOW_RULE}
 最终只输出 JSON：{"summary":"不超过40字","items":[{"orderNo":"订货号","qty":1,"reason":"不超过20字"}]}
-最多 ${MAX_ITEMS} 条。orderNo 必须来自工具结果。不要编造。库中没有就 items=[]。中文、短。`
+最多 ${MAX_ITEMS} 条。orderNo 必须来自工具结果。不要编造。库中没有就 items=[]。reason 可注明对标哪一 Wiki 项目。中文、短。`
 
 function slim(item) {
   return {
@@ -256,7 +262,14 @@ export async function analyzeNeed({ need, planOrderNos, llm }) {
     throw err
   }
 
+  const wiki = formatWikiContextForPrompt(text)
   const catalogResult = analyzeNeedFromCatalog(text)
+  if (wiki.hits.length) {
+    catalogResult.wikiProjects = wiki.hits
+    if (!catalogResult.brief?.includes('Wiki')) {
+      catalogResult.brief = `${catalogResult.brief || ''}（已匹配 Wiki：${wiki.hits.join('、')}）`.trim()
+    }
+  }
   if (catalogResult.questions.length >= 2 || catalogResult.matchTotal === 0) {
     return { ...catalogResult, engine: 'catalog' }
   }
@@ -282,6 +295,7 @@ export async function analyzeNeed({ need, planOrderNos, llm }) {
 
   const userText = [
     `需求：${text}`,
+    wiki.text,
     catalogHint,
     already.length ? `方案里已有订货号：${already.join('、')}` : '方案目前是空的。',
     '请输出 JSON。',
@@ -318,6 +332,7 @@ export async function analyzeNeed({ need, planOrderNos, llm }) {
 }
 
 const CHAT_SYSTEM = `你是电气选型助手，用中文短句对话。需要查料时用工具搜本公司库。
+${WIKI_FLOW_RULE}
 最终只输出 JSON：{"reply":"不超过80字","items":[{"orderNo":"订货号","qty":1,"reason":"不超过20字"}]}
 没有可推荐的料就 items=[]。orderNo 必须来自工具。不要编造。不要改用户 BOM。`
 
@@ -394,16 +409,18 @@ export async function proposeFromAnswers({ need, answers, planOrderNos, question
   const cfg = resolveConfig(llm)
   if (!cfg) return catalogFallback()
 
+  const wiki = formatWikiContextForPrompt(need)
   const facets = catalogFacetsForQuery(need)
   const userText = [
     `原始需求：${String(need || '').trim() || '未写'}`,
+    wiki.text,
     '补充问答：',
     ...rows.map((r) => `- ${r.title || r.id}：${r.value || '未填'}`),
     facets.total
       ? `库内约 ${facets.total} 条相关物料；品牌含 ${facets.brands.map((b) => b.label).slice(0, 6).join('、') || '多种'}`
       : '',
     already.length ? `方案里已有订货号（不要再推荐）：${already.join('、')}` : '方案目前是空的。',
-    '请先搜库，再输出 JSON。orderNo 必须来自工具结果。',
+    '请先对照 Wiki（若有），再搜库，再输出 JSON。orderNo 必须来自工具结果。',
   ].join('\n')
 
   const wait = withTimeout(REQUEST_MS)
@@ -473,8 +490,10 @@ export async function chatTurn({ history, need, answers, planOrderNos, llm }) {
     err.expose = true
     throw err
   }
+  const wiki = formatWikiContextForPrompt(need || prior[prior.length - 1]?.content)
   const context = [
     `原始需求：${String(need || '').trim() || '未写'}`,
+    wiki.text,
     rows.length ? `已回答：${rows.map((r) => `${r.title}=${r.value}`).join('；')}` : '',
     already.length ? `方案已有订货号：${already.join('、')}` : '方案目前是空的。',
   ]

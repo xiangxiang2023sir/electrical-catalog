@@ -9,7 +9,12 @@ function cellText(cell) {
   if (!cell) return ''
   const v = cell.value
   if (v == null || v === '') {
-    const t = typeof cell.text === 'string' ? cell.text.trim() : ''
+    let t = ''
+    try {
+      t = typeof cell.text === 'string' ? cell.text.trim() : ''
+    } catch {
+      t = ''
+    }
     return t && t !== 'null' ? t.replace(/\s+/g, ' ').trim() : ''
   }
   if (typeof v === 'number') return String(v)

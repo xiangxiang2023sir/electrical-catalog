@@ -17,5 +17,15 @@ library/*.xlsx
 library/*.xls
 library/*.xlsm
 library/整理任务/
+library.zip
+
+# 选型 Wiki：BOM 原件与编译页（含项目与订货号，勿上传 GitHub）
+wiki/raw/bom/*
+!wiki/raw/bom/.gitkeep
+wiki/raw/projects/*
+!wiki/raw/projects/.gitkeep
+!wiki/raw/projects/_模板.meta.md
+wiki/wiki/*
+!wiki/wiki/.gitkeep
 
 
